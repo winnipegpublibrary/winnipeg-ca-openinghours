@@ -13,8 +13,10 @@ the public hours widget JS (no server-side secret to protect -- it's
 already visible client-side, same as it is here).
 """
 
+import os
 import json
 import datetime
+from collections import Counter
 import requests
 
 LIBCAL_DOMAIN = "wpl.libcal.com"  # confirmed from hours_grid.js widget source
@@ -24,8 +26,8 @@ OUTPUT_DIR = "hours-schema"
 # the public hours widget (view-source on it, or wherever you have that
 # pair saved). Read-only + already public, so no need to route these
 # through GitHub Actions secrets.
-LIBCAL_CLIENT_ID = "345"
-LIBCAL_CLIENT_SECRET = "c8e680b7202fc0e56d504f7b0be61e11"
+LIBCAL_CLIENT_ID = "REPLACE_ME"
+LIBCAL_CLIENT_SECRET = "REPLACE_ME"
 
 # Same lid list used in winnipeg_ca_library_hours_translation.js (unique
 # lids only -- the EN/FR slug duplication lives in that file, not here).
@@ -38,12 +40,9 @@ BRANCH_LIDS = [
 
 def get_access_token():
     """
-    TODO: replace the body of this function with the working token-fetch
-    logic from get_hours.py -- that script already authenticates against
-    this same LibCal instance successfully, so reuse it rather than
-    re-deriving the exact request shape here. This is a placeholder
-    based on LibCal's documented OAuth client_credentials flow; confirm
-    it matches what get_hours.py actually does before relying on it.
+    Confirmed working against the live API (2026-09-24) using client 345,
+    read-only, Hours-scoped -- same request shape as the room-finder and
+    holidays widgets, just a different client id.
     """
     resp = requests.post(
         f"https://{LIBCAL_DOMAIN}/1.1/oauth/token",
@@ -58,26 +57,32 @@ def get_access_token():
     return resp.json()["access_token"]
 
 
-def fetch_hours(lid, token):
+def fetch_hours(lid, token, days_ahead=28):
     """
-    TODO: replace the body of this function with the working hours-fetch
-    call from get_hours.py, for the same reason as above -- don't trust
-    this placeholder's exact endpoint/response shape without checking it
-    against the call you already know works.
+    Confirmed against the live API (2026-09-24): returns a list containing
+    one location object with a flat "dates" dict keyed by ISO date, e.g.
+        {"2026-09-24": {"status": "open",
+                         "hours": [{"from": "10:00AM", "to": "8:00PM"}]},
+         "2026-09-27": {"status": "closed"},
+         "2026-09-30": {"status": "closed", "note": "...holiday..."}}
+    Closed days have no "hours" key. Some closed days carry a "note" --
+    that marks a one-off exception (e.g. a statutory holiday), not the
+    normal weekly pattern, and build_schema() below excludes those when
+    deciding what's typical for that weekday.
 
-    Placeholder assumes a response roughly like:
-        [{"lid": 1262, "dates": {
-            "2026-09-24": {"status": "open",
-                            "hours": [{"from": "8am", "to": "5pm"}]},
-            ...
-        }}]
-    Adjust build_schema() below if your actual response shape differs
-    (e.g. a flat "day"/"times" structure instead of a "dates" dict --
-    that's the shape seen in some LibCal examples too).
+    Pulling a wider window (default 28 days, ~4 occurrences of each
+    weekday) rather than just the next 7 matters here: a single week can
+    land on a holiday closure, which would otherwise get baked into the
+    schema as if that weekday is always closed.
     """
+    today = datetime.date.today()
     resp = requests.get(
         f"https://{LIBCAL_DOMAIN}/1.1/hours/{lid}",
         headers={"Authorization": f"Bearer {token}"},
+        params={
+            "from": today.isoformat(),
+            "to": (today + datetime.timedelta(days=days_ahead)).isoformat(),
+        },
         timeout=15,
     )
     resp.raise_for_status()
@@ -102,18 +107,42 @@ def to_24h(text):
 
 
 def build_schema(location_data):
-    """Turn one location's day-by-day hours into OpeningHoursSpecification entries."""
-    spec = []
+    """
+    Turn a multi-week window of day-by-day hours into one recurring
+    OpeningHoursSpecification entry per weekday.
+
+    Days carrying a "note" (e.g. a statutory holiday closure) are treated
+    as exceptions and excluded from the "what's typical" calculation --
+    otherwise a single holiday in the fetch window would get baked in as
+    if that weekday is always closed. For each remaining weekday, the
+    most common (open/closed, hours) pattern across however many
+    occurrences were fetched wins.
+    """
+    by_weekday = {}  # day name -> list of hashable hours-block tuples
+
     for date_str, day_info in location_data.get("dates", {}).items():
-        if day_info.get("status") != "open":
-            continue
+        if day_info.get("note"):
+            continue  # one-off exception, not representative of a normal week
+
         day_name = datetime.date.fromisoformat(date_str).strftime("%A")
-        for block in day_info.get("hours", []):
+        by_weekday.setdefault(day_name, [])
+
+        if day_info.get("status") != "open":
+            by_weekday[day_name].append(())  # closed that occurrence
+            continue
+
+        blocks = tuple((b["from"], b["to"]) for b in day_info.get("hours", []))
+        by_weekday[day_name].append(blocks)
+
+    spec = []
+    for day_name, occurrences in by_weekday.items():
+        most_common_blocks, _ = Counter(occurrences).most_common(1)[0]
+        for from_time, to_time in most_common_blocks:
             spec.append({
                 "@type": "OpeningHoursSpecification",
                 "dayOfWeek": f"https://schema.org/{day_name}",
-                "opens": to_24h(block["from"]),
-                "closes": to_24h(block["to"]),
+                "opens": to_24h(from_time),
+                "closes": to_24h(to_time),
             })
     return spec
 
