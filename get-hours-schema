@@ -24,7 +24,7 @@ OUTPUT_DIR = "hours-schema"
 # the public hours widget (view-source on it, or wherever you have that
 # pair saved). Read-only + already public, so no need to route these
 # through GitHub Actions secrets.
-LIBCAL_CLIENT_ID = "335"
+LIBCAL_CLIENT_ID = "345"
 LIBCAL_CLIENT_SECRET = "c8e680b7202fc0e56d504f7b0be61e11"
 
 # Same lid list used in winnipeg_ca_library_hours_translation.js (unique
