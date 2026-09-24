@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""
+get_hours_schema.py
+
+Pulls hours from the LibCal Hours API for each WPL branch and writes a
+schema.org OpeningHoursSpecification JSON file per branch, so the Drupal
+hours-schema widget can fetch it at runtime and inject it as JSON-LD.
+
+Run by the "Update library hours schema" GitHub Actions workflow.
+
+Uses the same read-only LibCal API credential pair already embedded in
+the public hours widget JS (no server-side secret to protect -- it's
+already visible client-side, same as it is here).
+"""
+
+import json
+import datetime
+import requests
+
+LIBCAL_DOMAIN = "wpl.libcal.com"  # confirmed from hours_grid.js widget source
+OUTPUT_DIR = "hours-schema"
+
+# TODO: fill in with the same read-only client id/secret already used by
+# the public hours widget (view-source on it, or wherever you have that
+# pair saved). Read-only + already public, so no need to route these
+# through GitHub Actions secrets.
+LIBCAL_CLIENT_ID = "330"
+LIBCAL_CLIENT_SECRET = "82ac23411e0f51949b46f983b942f38a"
+
+# Same lid list used in winnipeg_ca_library_hours_translation.js (unique
+# lids only -- the EN/FR slug duplication lives in that file, not here).
+# Keep both lists in sync if a branch is renamed, added, or removed.
+BRANCH_LIDS = [
+    1262, 7343, 1264, 1265, 1266, 1280, 1268, 1269, 1270, 1271,
+    1272, 1274, 1275, 1276, 1277, 1278, 1279, 1281, 1282, 1283,
+]
+
+
+def get_access_token():
+    """
+    TODO: replace the body of this function with the working token-fetch
+    logic from get_hours.py -- that script already authenticates against
+    this same LibCal instance successfully, so reuse it rather than
+    re-deriving the exact request shape here. This is a placeholder
+    based on LibCal's documented OAuth client_credentials flow; confirm
+    it matches what get_hours.py actually does before relying on it.
+    """
+    resp = requests.post(
+        f"https://{LIBCAL_DOMAIN}/1.1/oauth/token",
+        data={
+            "client_id": LIBCAL_CLIENT_ID,
+            "client_secret": LIBCAL_CLIENT_SECRET,
+            "grant_type": "client_credentials",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
+
+def fetch_hours(lid, token):
+    """
+    TODO: replace the body of this function with the working hours-fetch
+    call from get_hours.py, for the same reason as above -- don't trust
+    this placeholder's exact endpoint/response shape without checking it
+    against the call you already know works.
+
+    Placeholder assumes a response roughly like:
+        [{"lid": 1262, "dates": {
+            "2026-09-24": {"status": "open",
+                            "hours": [{"from": "8am", "to": "5pm"}]},
+            ...
+        }}]
+    Adjust build_schema() below if your actual response shape differs
+    (e.g. a flat "day"/"times" structure instead of a "dates" dict --
+    that's the shape seen in some LibCal examples too).
+    """
+    resp = requests.get(
+        f"https://{LIBCAL_DOMAIN}/1.1/hours/{lid}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def to_24h(text):
+    """Convert LibCal's '8am' / '5:30pm' style times to 24h 'HH:MM'."""
+    text = text.strip().lower().replace(" ", "")
+    is_pm = text.endswith("pm")
+    text = text[:-2]
+    if ":" in text:
+        hour_str, minute = text.split(":")
+    else:
+        hour_str, minute = text, "00"
+    hour = int(hour_str)
+    if is_pm and hour != 12:
+        hour += 12
+    if not is_pm and hour == 12:
+        hour = 0
+    return f"{hour:02d}:{minute}"
+
+
+def build_schema(location_data):
+    """Turn one location's day-by-day hours into OpeningHoursSpecification entries."""
+    spec = []
+    for date_str, day_info in location_data.get("dates", {}).items():
+        if day_info.get("status") != "open":
+            continue
+        day_name = datetime.date.fromisoformat(date_str).strftime("%A")
+        for block in day_info.get("hours", []):
+            spec.append({
+                "@type": "OpeningHoursSpecification",
+                "dayOfWeek": f"https://schema.org/{day_name}",
+                "opens": to_24h(block["from"]),
+                "closes": to_24h(block["to"]),
+            })
+    return spec
+
+
+def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    token = get_access_token()
+
+    for lid in BRANCH_LIDS:
+        data = fetch_hours(lid, token)
+        location = data[0] if isinstance(data, list) else data
+        spec = build_schema(location)
+
+        out_path = os.path.join(OUTPUT_DIR, f"{lid}.json")
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(spec, f, ensure_ascii=False, indent=2)
+        print(f"Wrote {out_path} ({len(spec)} entries)")
+
+
+if __name__ == "__main__":
+    main()
