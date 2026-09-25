@@ -1,44 +1,50 @@
-[
-  {
-    "@type": "OpeningHoursSpecification",
-    "dayOfWeek": "https://schema.org/Friday",
-    "opens": "10:00",
-    "closes": "17:00"
-  },
-  {
-    "@type": "OpeningHoursSpecification",
-    "dayOfWeek": "https://schema.org/Saturday",
-    "opens": "10:00",
-    "closes": "17:00"
-  },
-  {
-    "@type": "OpeningHoursSpecification",
-    "dayOfWeek": "https://schema.org/Sunday",
-    "opens": "13:00",
-    "closes": "17:00"
-  },
-  {
-    "@type": "OpeningHoursSpecification",
-    "dayOfWeek": "https://schema.org/Monday",
-    "opens": "12:00",
-    "closes": "20:00"
-  },
-  {
-    "@type": "OpeningHoursSpecification",
-    "dayOfWeek": "https://schema.org/Tuesday",
-    "opens": "12:00",
-    "closes": "20:00"
-  },
-  {
-    "@type": "OpeningHoursSpecification",
-    "dayOfWeek": "https://schema.org/Thursday",
-    "opens": "12:00",
-    "closes": "20:00"
-  },
-  {
-    "@type": "OpeningHoursSpecification",
-    "dayOfWeek": "https://schema.org/Wednesday",
-    "opens": "10:00",
-    "closes": "17:00"
-  }
-]
+{
+  "@context": "https://schema.org",
+  "@type": "Library",
+  "name": "Sir William Stephenson",
+  "address": "765 Keewatin St, Winnipeg, MB",
+  "openingHoursSpecification": [
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": "https://schema.org/Friday",
+      "opens": "10:00",
+      "closes": "17:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": "https://schema.org/Saturday",
+      "opens": "10:00",
+      "closes": "17:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": "https://schema.org/Sunday",
+      "opens": "13:00",
+      "closes": "17:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": "https://schema.org/Monday",
+      "opens": "12:00",
+      "closes": "20:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": "https://schema.org/Tuesday",
+      "opens": "12:00",
+      "closes": "20:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": "https://schema.org/Thursday",
+      "opens": "12:00",
+      "closes": "20:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": "https://schema.org/Wednesday",
+      "opens": "10:00",
+      "closes": "17:00"
+    }
+  ]
+}

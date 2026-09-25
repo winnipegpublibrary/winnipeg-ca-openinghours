@@ -1,1 +1,7 @@
-[]
+{
+  "@context": "https://schema.org",
+  "@type": "Library",
+  "name": "Munroe",
+  "address": "489 London Street, Winnipeg, MB",
+  "openingHoursSpecification": []
+}
