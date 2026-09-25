@@ -15,6 +15,7 @@ already visible client-side, same as it is here).
 
 import os
 import json
+import re
 import datetime
 from collections import Counter
 import requests
@@ -123,10 +124,35 @@ def normalize_dates(dates_field):
     return merged
 
 
+def extract_street_address(desc_html):
+    """
+    Best-effort pull of the street address out of LibCal's "desc" field,
+    which is a blob of HTML -- observed shape is a leading <p>street
+    address</p> followed by unrelated contact-info markup. Strips tags
+    from just that first paragraph. Not a substitute for a real
+    PostalAddress with city/province/postal code broken out -- if this
+    ever needs to validate more strictly, those would need a proper
+    per-branch address source rather than being scraped out of prose.
+    """
+    match = re.search(r"<p>(.*?)</p>", desc_html or "", re.DOTALL)
+    if not match:
+        return ""
+    return re.sub(r"<[^>]+>", "", match.group(1)).strip()
+
+
 def build_schema(location_data):
     """
-    Turn a multi-week window of day-by-day hours into one recurring
-    OpeningHoursSpecification entry per weekday.
+    Turn a multi-week window of day-by-day hours into a full Library
+    entity (a schema.org LocalBusiness subtype) carrying a recurring
+    OpeningHoursSpecification per weekday.
+
+    A bare array of OpeningHoursSpecification objects is NOT valid on
+    its own -- Google's rich results parser only recognizes it as a
+    *property* of a parent entity with name/address, confirmed after
+    the first real Rich Results Test came back "no items detected"
+    despite the array itself being syntactically fine. Library is an
+    official schema.org LocalBusiness subtype, matching what a branch
+    page actually is.
 
     Days carrying a "note" (e.g. a statutory holiday closure) are treated
     as exceptions and excluded from the "what's typical" calculation --
@@ -135,8 +161,8 @@ def build_schema(location_data):
     most common (open/closed, hours) pattern across however many
     occurrences were fetched wins.
 
-    A branch with no dates at all (e.g. indefinitely closed) simply
-    produces an empty spec -- not an error.
+    A branch with no dates at all (e.g. indefinitely closed) still
+    produces a valid entity, just with an empty openingHoursSpecification.
     """
     by_weekday = {}  # day name -> list of hashable hours-block tuples
 
@@ -154,17 +180,26 @@ def build_schema(location_data):
         blocks = tuple((b["from"], b["to"]) for b in day_info.get("hours", []))
         by_weekday[day_name].append(blocks)
 
-    spec = []
+    opening_hours = []
     for day_name, occurrences in by_weekday.items():
         most_common_blocks, _ = Counter(occurrences).most_common(1)[0]
         for from_time, to_time in most_common_blocks:
-            spec.append({
+            opening_hours.append({
                 "@type": "OpeningHoursSpecification",
                 "dayOfWeek": f"https://schema.org/{day_name}",
                 "opens": to_24h(from_time),
                 "closes": to_24h(to_time),
             })
-    return spec
+
+    street = extract_street_address(location_data.get("desc", ""))
+
+    return {
+        "@context": "https://schema.org",
+        "@type": "Library",
+        "name": location_data.get("name", ""),
+        "address": f"{street}, Winnipeg, MB" if street else "Winnipeg, MB",
+        "openingHoursSpecification": opening_hours,
+    }
 
 
 def main():
@@ -180,7 +215,7 @@ def main():
             out_path = os.path.join(OUTPUT_DIR, f"{lid}.json")
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(spec, f, ensure_ascii=False, indent=2)
-            print(f"Wrote {out_path} ({len(spec)} entries)")
+            print(f"Wrote {out_path} ({len(spec['openingHoursSpecification'])} entries)")
         except Exception as exc:
             # Don't let one branch's oddity (indefinitely closed, unexpected
             # response shape, a transient network blip) take down the run
