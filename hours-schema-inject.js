@@ -1,14 +1,14 @@
 /**
  * hours-schema-inject.js
  *
- * Drop this one block on every WPL branch page (English and French alike).
- * It figures out which branch the page is for, fetches that branch's
- * pre-generated hours entity JSON from GitHub (a schema.org Library with
- * a nested openingHoursSpecification array -- not a bare array, since
- * OpeningHoursSpecification only validates as a property of a parent
- * entity, not as a standalone type), and injects it into <head> as a
- * <script type="application/ld+json"> tag so search engines pick it up
- * as structured data.
+ * Loaded via <script src> (jsDelivr, mirroring the translation script's
+ * hosting) on every WPL branch page. It figures out which branch the page
+ * is for, fetches that branch's pre-generated hours entity JSON from GitHub
+ * (a schema.org Library with a nested openingHoursSpecification array --
+ * not a bare array, since OpeningHoursSpecification only validates as a
+ * property of a parent entity, not as a standalone type), and injects it
+ * into <head> as a <script type="application/ld+json"> tag so search
+ * engines pick it up as structured data.
  *
  * REQUIRES: winnipeg_ca_library_hours_translation.js (the hours-widget
  * translation script) to have already run on this page and exposed its
